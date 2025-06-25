@@ -1,24 +1,187 @@
-var downloads = {};
-
-browser.downloads.onCreated.addListener(function reportDownload(item) {
-    browser.notifications.create({
-        "type": "basic",
-        "iconUrl": browser.extension.getURL("icons/icon-48.png"),
-        "title": "Download Started",
-        "message": item.filename
-    });
-
-    downloads[item.id] = item.filename;
-});
-
-browser.downloads.onChanged.addListener(function reportDownloadEnd(item) {
-    if (item.state.current == "complete") {
-        browser.notifications.create({
-            "type": "basic",
-            "iconUrl": browser.extension.getURL("icons/icon-48.png"),
-            "title": "Download Completed",
-            "message": downloads[item.id]
-        });
-        delete downloads[item.id];
+// Download notification manager with optimizations
+class DownloadNotifyManager {
+    constructor() {
+        this.downloads = new Map(); // Use Map for better performance
+        this.lastNotificationTime = 0;
+        this.THROTTLE_DELAY = 1000; // 1 second between notifications
+        this.MAX_STORED_DOWNLOADS = 100; // Prevent unlimited memory usage
+        this.CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
+        this.permissionManager = new PermissionManager();
+        
+        this.init();
     }
-});
+
+    init() {
+        // Set up periodic cleanup to prevent memory leaks
+        setInterval(() => this.cleanupOldDownloads(), this.CLEANUP_INTERVAL);
+        
+        // Bind event listeners
+        this.bindEvents();
+    }
+
+    bindEvents() {
+        // Download started listener
+        browser.downloads.onCreated.addListener((item) => {
+            this.handleDownloadStart(item);
+        });
+
+        // Download status changed listener
+        browser.downloads.onChanged.addListener((delta) => {
+            this.handleDownloadChange(delta);
+        });
+
+        // Download erased listener - cleanup when user manually removes from history
+        if (browser.downloads.onErased) {
+            browser.downloads.onErased.addListener((downloadId) => {
+                this.downloads.delete(downloadId);
+            });
+        }
+
+        // Permission change listener
+        if (browser.permissions && browser.permissions.onRemoved) {
+            browser.permissions.onRemoved.addListener((permissions) => {
+                if (permissions.permissions && permissions.permissions.includes('notifications')) {
+                    this.permissionManager.onPermissionRemoved();
+                }
+            });
+        }
+    }
+
+    // Throttling: Prevent too many notifications
+    shouldShowNotification() {
+        const now = Date.now();
+        if (now - this.lastNotificationTime < this.THROTTLE_DELAY) {
+            return false;
+        }
+        this.lastNotificationTime = now;
+        return true;
+    }
+
+    // Memory management: Limit stored downloads
+    enforceMemoryLimit() {
+        if (this.downloads.size > this.MAX_STORED_DOWNLOADS) {
+            // Remove oldest entries (first 10)
+            const entriesToRemove = Math.min(10, this.downloads.size - this.MAX_STORED_DOWNLOADS + 10);
+            const iterator = this.downloads.keys();
+            
+            for (let i = 0; i < entriesToRemove; i++) {
+                const key = iterator.next().value;
+                if (key !== undefined) {
+                    this.downloads.delete(key);
+                }
+            }
+        }
+    }
+
+    // Cleanup old completed downloads to prevent memory leaks
+    cleanupOldDownloads() {
+        const cutoffTime = Date.now() - (24 * 60 * 60 * 1000); // 24 hours ago
+        
+        for (const [id, data] of this.downloads.entries()) {
+            if (data.timestamp < cutoffTime || data.completed) {
+                this.downloads.delete(id);
+            }
+        }
+    }
+
+    async handleDownloadStart(item) {
+        try {
+            // Throttling check
+            if (!this.shouldShowNotification()) {
+                return;
+            }
+
+            // Store download info with timestamp
+            this.downloads.set(item.id, {
+                filename: item.filename || 'Unknown file',
+                timestamp: Date.now(),
+                completed: false
+            });
+
+            // Enforce memory limits
+            this.enforceMemoryLimit();
+
+            // Show notification using permission manager
+            await this.permissionManager.createNotification({
+                type: "basic",
+                iconUrl: browser.runtime.getURL("icons/icon-48.png"),
+                title: "Download Started",
+                message: item.filename || 'Unknown file'
+            });
+
+        } catch (error) {
+            console.error('Error in handleDownloadStart:', error);
+        }
+    }
+
+    async handleDownloadChange(delta) {
+        try {
+            const downloadData = this.downloads.get(delta.id);
+            
+            // Only proceed if we have stored data for this download
+            if (!downloadData) {
+                return;
+            }
+
+            // Handle completion
+            if (delta.state && delta.state.current === "complete") {
+                // Throttling check
+                if (!this.shouldShowNotification()) {
+                    // Mark as completed but don't show notification due to throttling
+                    downloadData.completed = true;
+                    return;
+                }
+
+                await this.permissionManager.createNotification({
+                    type: "basic",
+                    iconUrl: browser.runtime.getURL("icons/icon-48.png"),
+                    title: "Download Completed",
+                    message: downloadData.filename
+                });
+
+                // Mark as completed and schedule for cleanup
+                downloadData.completed = true;
+                setTimeout(() => {
+                    this.downloads.delete(delta.id);
+                }, 60000); // Remove after 1 minute
+            }
+
+            // Handle interruption/failure
+            if (delta.state && delta.state.current === "interrupted") {
+                if (this.shouldShowNotification()) {
+                    await this.permissionManager.createNotification({
+                        type: "basic",
+                        iconUrl: browser.runtime.getURL("icons/icon-48.png"),
+                        title: "Download Failed",
+                        message: `${downloadData.filename} - Download interrupted`
+                    });
+                }
+
+                // Remove failed download after short delay
+                setTimeout(() => {
+                    this.downloads.delete(delta.id);
+                }, 5000);
+            }
+
+        } catch (error) {
+            console.error('Error in handleDownloadChange:', error);
+        }
+    }
+
+    // Public method to get current stats (useful for debugging)
+    getStats() {
+        return {
+            activeDownloads: this.downloads.size,
+            lastNotification: new Date(this.lastNotificationTime).toISOString(),
+            hasNotificationPermission: this.permissionManager.hasNotificationPermission
+        };
+    }
+}
+
+// Initialize the download manager
+const downloadManager = new DownloadNotifyManager();
+
+// Optional: Expose to global scope for debugging
+if (typeof window !== 'undefined') {
+    window.downloadManager = downloadManager;
+}
