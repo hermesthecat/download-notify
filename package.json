@@ -20,6 +20,6 @@
   "author": "Download Notify Team",
   "license": "MIT",
   "devDependencies": {
-    "web-ext": "^7.0.0"
+    "web-ext": "^8.8.0"
   }
 }
