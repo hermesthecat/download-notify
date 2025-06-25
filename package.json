@@ -1,0 +1,25 @@
+{
+  "name": "download-notify-extension",
+  "version": "2.0.0",
+  "description": "Cross-browser download notification extension with memory management and throttling",
+  "scripts": {
+    "build": "node build.js",
+    "dev:firefox": "web-ext run --source-dir=build/firefox-v2",
+    "dev:chrome": "web-ext run --source-dir=build/chrome-v2 --target=chromium",
+    "package:firefox": "web-ext build --source-dir=build/firefox-v2 --artifacts-dir=dist",
+    "package:chrome": "web-ext build --source-dir=build/chrome-v2 --artifacts-dir=dist",
+    "package:v3": "web-ext build --source-dir=build/universal-v3 --artifacts-dir=dist"
+  },
+  "keywords": [
+    "browser-extension",
+    "downloads",
+    "notifications",
+    "chrome",
+    "firefox"
+  ],
+  "author": "Download Notify Team",
+  "license": "MIT",
+  "devDependencies": {
+    "web-ext": "^7.0.0"
+  }
+}
