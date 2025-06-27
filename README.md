@@ -229,15 +229,15 @@ download-notify-master/
 
 ## 🎯 Özellik Karşılaştırması
 
-| Özellik | V2 (Chrome/Firefox) | V3 (Universal) |
-|---------|--------------------|--------------------|
-| Bildirimler | ✅ | ✅ |
-| Throttling | ✅ | ✅ |
-| Memory Management | ✅ (RAM) | ✅ (Storage API) |
-| Cross-browser | ✅ | ✅ |
-| Service Worker | ❌ | ✅ |
-| Persistent Storage | ❌ | ✅ |
-| Future-proof | ⚠️ | ✅ |
+| Özellik            | V2 (Chrome/Firefox) | V3 (Universal) |
+|--------------------|---------------------|----------------|
+| Bildirimler        | ✅                  | ✅              |
+| Throttling         | ✅                  | ✅              |
+| Memory Management  | ✅ (RAM)             | ✅ (Storage API) |
+| Cross-browser      | ✅                   | ✅               |
+| Service Worker     | ❌                   | ✅               |
+| Persistent Storage | ❌                   | ✅               |
+| Future-proof       | ⚠️                   | ✅               |
 
 ---
 
